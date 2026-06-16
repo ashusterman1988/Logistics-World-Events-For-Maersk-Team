@@ -1,0 +1,1151 @@
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import {
+  Anchor, RefreshCw, AlertTriangle, Plane, Ship, Truck, ShoppingCart, Landmark,
+  Building2, Radio, ExternalLink, FileText, Star, Plus, X, Check, Copy, Flame,
+  ArrowDownWideNarrow, Eye, Target, Globe, Filter, BarChart3, Sparkles, ChevronDown, Cpu,
+  Newspaper, ArrowRight, ArrowLeft, Search,
+} from "lucide-react";
+
+// API endpoint. Defaults to Anthropic direct (works in the Claude runtime).
+// A deployment sets window.__API_URL__ to its own key-protected proxy path.
+const API_URL = (typeof window !== "undefined" && window.__API_URL__) || "https://api.anthropic.com/v1/messages";
+
+const STYLES = `
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+.lp-root {
+  --abyss:#071A26; --deep:#0B2433; --surface:#102E40; --surface2:#163D52;
+  --line:rgba(120,180,210,0.14); --line2:rgba(120,180,210,0.22);
+  --ink:#EAF3F8; --muted:#8AA7BA; --faint:#5E7B8E;
+  --mk:#42B0D5; --mk2:#6FD2EF; --amber:#F4A43A; --red:#FF6F61; --mint:#5BD6AE; --violet:#B79CFF;
+  font-family:'Inter',system-ui,sans-serif; color:var(--ink);
+  background:linear-gradient(180deg,var(--abyss),var(--deep) 60%); min-height:100vh;
+}
+.lp-root *::selection { background:rgba(66,176,213,0.3); }
+.lp-root :focus-visible { outline:2px solid var(--mk); outline-offset:2px; border-radius:6px; }
+
+.lp-root { position:relative; }
+.lp-shell { display:grid; grid-template-columns:272px minmax(0,1fr); min-height:100vh; position:relative; z-index:1; }
+
+/* sidebar */
+.lp-side { position:sticky; top:0; height:100vh; overflow:auto; padding:22px 18px;
+  background:linear-gradient(180deg,rgba(7,26,38,0.9),rgba(11,36,51,0.6)); border-right:1px solid var(--line); }
+.lp-brand { display:flex; align-items:center; gap:11px; padding-bottom:20px; border-bottom:1px solid var(--line); }
+.lp-mark { width:40px; height:40px; border-radius:11px; display:grid; place-items:center; flex:none;
+  background:linear-gradient(155deg,var(--mk),#1E6E92); color:#04141C; box-shadow:0 6px 20px rgba(66,176,213,0.4); }
+.lp-bname { font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:17px; letter-spacing:-0.01em; line-height:1.05; }
+.lp-btag { font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:var(--muted); letter-spacing:0.08em; text-transform:uppercase; margin-top:4px; }
+
+.lp-sec { margin-top:22px; }
+.lp-sec-h { font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); margin-bottom:10px; display:flex; align-items:center; gap:7px; }
+
+.lp-nav { display:flex; flex-direction:column; gap:6px; }
+.lp-navbtn { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; text-align:left;
+  background:transparent; border:1px solid transparent; border-radius:10px; padding:11px 13px; cursor:pointer; color:var(--muted);
+  font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14px; transition:all .16s; }
+.lp-navbtn:hover { background:var(--surface); color:var(--ink); }
+.lp-navbtn.on { background:var(--surface2); color:var(--ink); border-color:var(--line2); box-shadow:inset 3px 0 0 var(--mk); }
+.lp-navbtn small { font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--faint); display:block; font-weight:400; margin-top:3px; }
+.lp-pill { font-family:'IBM Plex Mono',monospace; font-size:11px; padding:2px 8px; border-radius:999px; background:var(--deep); color:var(--mk2); border:1px solid var(--line); }
+
+.lp-switch { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%;
+  background:transparent; border:none; padding:9px 2px; cursor:pointer; color:var(--muted); font-size:13px; font-family:'Inter',sans-serif; }
+.lp-switch:hover { color:var(--ink); }
+.lp-switch:disabled { opacity:.4; cursor:default; }
+.lp-switch span { display:flex; align-items:center; gap:9px; }
+.lp-track { width:34px; height:19px; border-radius:999px; background:var(--surface2); border:1px solid var(--line2); position:relative; transition:background .18s; flex:none; }
+.lp-knob { position:absolute; top:1.5px; left:2px; width:14px; height:14px; border-radius:50%; background:var(--faint); transition:transform .18s,background .18s; }
+.lp-switch.on .lp-track { background:rgba(66,176,213,0.35); border-color:var(--mk); }
+.lp-switch.on .lp-knob { transform:translateX(15px); background:var(--mk2); }
+
+.lp-wl-input { width:100%; background:var(--deep); border:1px solid var(--line); border-radius:9px; padding:9px 11px; color:var(--ink); font-size:12.5px; font-family:'Inter',sans-serif; }
+.lp-wl-input:focus { outline:none; border-color:var(--mk); }
+.lp-wl-add { margin-top:8px; width:100%; display:inline-flex; align-items:center; justify-content:center; gap:7px;
+  background:var(--surface2); border:1px solid var(--line2); color:var(--ink); border-radius:9px; padding:8px; font-size:12.5px; font-weight:600; cursor:pointer; transition:border-color .16s; }
+.lp-wl-add:hover { border-color:var(--mk); }
+.lp-wl-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:11px; }
+.lp-wl-chip { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; padding:4px 7px 4px 10px; border-radius:999px;
+  background:rgba(244,164,58,0.12); border:1px solid rgba(244,164,58,0.4); color:var(--amber); }
+.lp-wl-chip button { background:none; border:none; color:var(--amber); cursor:pointer; display:grid; place-items:center; opacity:.7; }
+.lp-wl-chip button:hover { opacity:1; }
+.lp-wl-empty { font-size:11.5px; color:var(--faint); line-height:1.5; margin-top:8px; }
+
+.lp-agentbox { background:var(--surface); border:1px solid var(--line); border-radius:11px; padding:13px; }
+.lp-agentrow { display:flex; align-items:center; justify-content:space-between; font-size:11.5px; color:var(--muted); padding:4px 0; }
+.lp-agentrow b { color:var(--ink); font-weight:600; font-family:'IBM Plex Mono',monospace; font-size:11px; }
+.lp-howbtn { margin-top:9px; width:100%; background:transparent; border:1px dashed var(--line2); color:var(--mk2); border-radius:9px; padding:8px; font-size:11.5px; cursor:pointer; }
+.lp-howbtn:hover { background:var(--deep); }
+.lp-how { font-size:11.5px; color:var(--muted); line-height:1.55; margin-top:9px; padding:11px; background:var(--deep); border-radius:9px; border:1px solid var(--line); }
+.lp-how ol { margin:6px 0 0 16px; display:flex; flex-direction:column; gap:4px; }
+
+/* main */
+.lp-main { padding:22px clamp(16px,3vw,34px) 60px; min-width:0; }
+.lp-top { display:flex; align-items:flex-end; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+.lp-h1 { font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:clamp(22px,3vw,30px); letter-spacing:-0.015em; line-height:1; }
+.lp-h1 em { font-style:normal; color:var(--mk2); }
+.lp-h1-sub { font-size:13.5px; color:var(--muted); margin-top:7px; }
+.lp-tip { margin-top:16px; display:flex; align-items:center; gap:11px; background:rgba(66,176,213,0.08); border:1px solid rgba(66,176,213,0.22); border-radius:11px; padding:11px 14px; font-size:13px; color:#C2D6E2; line-height:1.45; }
+.lp-tip > svg { color:var(--mk2); flex:none; }
+.lp-tip-x { margin-left:auto; background:none; border:none; color:var(--muted); cursor:pointer; display:grid; place-items:center; padding:3px; border-radius:6px; flex:none; }
+.lp-tip-x:hover { color:var(--ink); background:var(--surface2); }
+.lp-hormuz { margin-top:18px; background:linear-gradient(135deg, rgba(244,164,58,0.11), rgba(16,46,64,0.55)); border:1px solid rgba(244,164,58,0.32); border-radius:16px; padding:18px 20px; }
+.lp-hz-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.lp-hz-title { display:flex; align-items:center; gap:10px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:16px; letter-spacing:-0.01em; }
+.lp-hz-title svg { color:var(--amber); }
+.lp-hz-actions { display:flex; align-items:center; gap:8px; }
+.lp-hz-status { font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.08em; text-transform:uppercase; padding:5px 11px; border-radius:999px; }
+.lp-hz-calm { background:rgba(91,214,174,0.16); color:var(--mint); border:1px solid rgba(91,214,174,0.4); }
+.lp-hz-watch { background:rgba(66,176,213,0.16); color:var(--mk2); border:1px solid rgba(66,176,213,0.4); }
+.lp-hz-elevated { background:rgba(244,164,58,0.18); color:var(--amber); border:1px solid rgba(244,164,58,0.45); }
+.lp-hz-high { background:rgba(255,111,97,0.18); color:var(--red); border:1px solid rgba(255,111,97,0.45); }
+.lp-hz-icon { background:none; border:1px solid var(--line2); border-radius:8px; color:var(--muted); cursor:pointer; display:grid; place-items:center; width:31px; height:31px; transition:border-color .16s,color .16s; }
+.lp-hz-icon:hover { color:var(--ink); border-color:var(--amber); }
+.lp-hz-icon:disabled { opacity:.5; cursor:default; }
+.lp-hz-situation { font-size:14.5px; line-height:1.58; color:var(--ink); margin-top:14px; }
+.lp-hz-note { margin-top:11px; font-size:11.5px; color:var(--faint); background:var(--deep); border:1px solid var(--line); border-radius:8px; padding:7px 11px; display:inline-block; }
+.lp-hz-grid { margin-top:15px; display:grid; gap:11px; grid-template-columns:repeat(auto-fill, minmax(238px,1fr)); }
+.lp-hz-item { background:rgba(11,36,51,0.7); border:1px solid var(--line); border-left:3px solid var(--amber); border-radius:11px; padding:13px 14px; cursor:pointer; transition:border-color .16s, transform .16s; }
+.lp-hz-item:hover { border-color:rgba(244,164,58,0.55); transform:translateY(-2px); }
+.lp-hz-item:focus-visible { border-color:var(--amber); outline:none; }
+.lp-hz-item-meta { margin-bottom:9px; }
+.lp-hz-item-h { font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14px; line-height:1.32; }
+.lp-hz-item-src { margin-top:9px; font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:var(--faint); display:flex; align-items:center; gap:6px; }
+.lp-sync { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--muted); margin-top:7px; display:flex; align-items:center; gap:8px; }
+.lp-demo { font-size:9px; letter-spacing:0.1em; text-transform:uppercase; padding:2px 7px; border-radius:6px; background:rgba(244,164,58,0.16); color:var(--amber); border:1px solid rgba(244,164,58,0.4); }
+.lp-live { width:8px; height:8px; border-radius:50%; background:var(--mint); animation:lp-pulse 2s infinite; }
+@keyframes lp-pulse { 0%{box-shadow:0 0 0 0 rgba(91,214,174,.6);} 70%{box-shadow:0 0 0 6px rgba(91,214,174,0);} 100%{box-shadow:0 0 0 0 rgba(91,214,174,0);} }
+.lp-actions { display:flex; gap:9px; }
+.lp-btn { display:inline-flex; align-items:center; gap:8px; cursor:pointer; background:var(--surface2); color:var(--ink); border:1px solid var(--line2); border-radius:10px; padding:10px 15px; font-size:13px; font-weight:600; font-family:'Inter',sans-serif; transition:border-color .16s,transform .1s; }
+.lp-btn:hover { border-color:var(--mk); }
+.lp-btn:active { transform:translateY(1px); }
+.lp-btn:disabled { opacity:.5; cursor:default; }
+.lp-btn-pri { background:linear-gradient(150deg,var(--mk),#1E6E92); border-color:transparent; color:#04141C; }
+.lp-spin { animation:lp-rot .9s linear infinite; }
+@keyframes lp-rot { to { transform:rotate(360deg); } }
+
+/* agent pipeline */
+.lp-agent { margin-top:20px; background:linear-gradient(135deg,rgba(66,176,213,0.09),rgba(16,46,64,0.5)); border:1px solid var(--line2); border-radius:16px; padding:18px 20px; }
+.lp-agent-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.lp-agent-title { display:flex; align-items:center; gap:9px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.12em; text-transform:uppercase; color:var(--mk2); }
+.lp-agent-toggle { background:none; border:none; color:var(--muted); cursor:pointer; display:flex; align-items:center; gap:6px; font-size:11.5px; font-family:'IBM Plex Mono',monospace; }
+.lp-agent-toggle:hover { color:var(--ink); }
+.lp-chev { transition:transform .2s; }
+.lp-chev.up { transform:rotate(180deg); }
+
+.lp-pipe { position:relative; margin-top:20px; display:flex; justify-content:space-between; }
+.lp-pipe-track { position:absolute; top:18px; left:18px; right:18px; height:2px; background:var(--line2); }
+.lp-pipe-fill { position:absolute; top:18px; left:18px; height:2px; background:linear-gradient(90deg,var(--mk),var(--mk2)); transition:width .5s ease; }
+.lp-node { position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; gap:8px; flex:1; text-align:center; }
+.lp-dot { width:38px; height:38px; border-radius:11px; display:grid; place-items:center; background:var(--deep); border:1px solid var(--line2); color:var(--faint); transition:all .25s; }
+.lp-node.active .lp-dot { border-color:var(--mk); color:var(--mk2); background:var(--surface2); box-shadow:0 0 0 4px rgba(66,176,213,0.16); animation:lp-glow 1.4s infinite; }
+@keyframes lp-glow { 0%,100%{box-shadow:0 0 0 4px rgba(66,176,213,0.10);} 50%{box-shadow:0 0 0 6px rgba(66,176,213,0.22);} }
+.lp-node.done .lp-dot { border-color:var(--mint); color:var(--mint); background:rgba(91,214,174,0.1); }
+.lp-node-lbl { font-size:10.5px; color:var(--muted); line-height:1.25; max-width:92px; }
+.lp-node.active .lp-node-lbl { color:var(--ink); }
+
+.lp-sources { margin-top:18px; border-top:1px solid var(--line); padding-top:14px; }
+.lp-sources-h { font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:var(--faint); margin-bottom:10px; }
+.lp-src-list { display:flex; flex-wrap:wrap; gap:7px; }
+.lp-src { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:var(--muted); background:var(--deep); border:1px solid var(--line); border-radius:8px; padding:5px 9px; text-decoration:none; max-width:240px; transition:border-color .15s,color .15s; }
+.lp-src:hover { border-color:var(--mk); color:var(--ink); }
+.lp-src span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+.lp-summary-bar { margin-top:20px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; background:rgba(16,46,64,0.8); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); border:1px solid var(--line); border-radius:13px; padding:13px 18px; }
+.lp-sb-item { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--muted); }
+.lp-sb-item b { color:var(--ink); font-family:'IBM Plex Mono',monospace; }
+.lp-sb-divider { width:1px; height:18px; background:var(--line); }
+.lp-sb-show { margin-left:auto; background:none; border:1px solid var(--line2); border-radius:8px; color:var(--mk2); padding:6px 12px; font-size:11.5px; cursor:pointer; font-family:'IBM Plex Mono',monospace; }
+.lp-sb-show:hover { border-color:var(--mk); }
+
+/* read */
+.lp-read { margin-top:18px; background:linear-gradient(135deg,rgba(183,156,255,0.10),rgba(16,46,64,0.5)); border:1px solid rgba(183,156,255,0.28); border-radius:16px; padding:18px 20px; }
+.lp-read-lbl { display:inline-flex; align-items:center; gap:8px; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:var(--violet); margin-bottom:10px; }
+.lp-read-txt { font-size:15.5px; line-height:1.6; color:var(--ink); }
+.lp-read-load { height:13px; border-radius:6px; background:rgba(255,255,255,0.05); position:relative; overflow:hidden; }
+.lp-read-load + .lp-read-load { margin-top:9px; }
+.lp-read-load::after { content:""; position:absolute; inset:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent); animation:lp-sh 1.4s infinite; }
+@keyframes lp-sh { 100%{ transform:translateX(100%);} }
+
+.lp-filters { margin-top:22px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.lp-chip { font-size:12px; font-weight:500; padding:6px 13px; border-radius:999px; cursor:pointer; background:transparent; border:1px solid var(--line); color:var(--muted); transition:all .15s; }
+.lp-chip:hover { color:var(--ink); border-color:var(--line2); }
+.lp-chip.on { background:var(--mk); border-color:var(--mk); color:#04141C; font-weight:600; }
+.lp-search { margin-top:22px; display:flex; align-items:center; gap:11px; background:rgba(16,46,64,0.84); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); border:1px solid var(--line2); border-radius:12px; padding:12px 15px; transition:border-color .16s; }
+.lp-search:focus-within { border-color:var(--mk); }
+.lp-search > svg { color:var(--muted); flex:none; }
+.lp-search input { flex:1; min-width:0; background:none; border:none; outline:none; color:var(--ink); font-size:14px; font-family:'Inter',sans-serif; }
+.lp-search input::placeholder { color:var(--faint); }
+.lp-search-count { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--mk2); white-space:nowrap; }
+.lp-search-clear { background:none; border:none; color:var(--muted); cursor:pointer; display:grid; place-items:center; padding:3px; border-radius:6px; flex:none; }
+.lp-search-clear:hover { color:var(--ink); background:var(--surface2); }
+.lp-mark { background:rgba(66,176,213,0.34); color:#EAF7FC; border-radius:3px; padding:0 2px; }
+.lp-othertab { margin-top:12px; }
+.lp-othertab button { background:rgba(16,46,64,0.6); border:1px solid var(--line2); border-radius:10px; color:var(--mk2); padding:8px 13px; font-size:12.5px; cursor:pointer; display:inline-flex; align-items:center; gap:8px; font-family:'Inter',sans-serif; transition:border-color .16s; }
+.lp-othertab button:hover { border-color:var(--mk); color:var(--ink); }
+.lp-websearch { margin-top:12px; display:flex; align-items:center; gap:13px; flex-wrap:wrap; }
+.lp-websearch button { background:linear-gradient(150deg, rgba(66,176,213,0.22), rgba(22,48,75,0.6)); border:1px solid var(--mk); border-radius:11px; color:var(--mk2); padding:10px 16px; font-size:13px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:9px; font-family:'Inter',sans-serif; transition:filter .15s; }
+.lp-websearch button:hover { filter:brightness(1.12); }
+.lp-websearch-note { font-size:12px; color:var(--faint); }
+.lp-topic { margin-top:22px; animation:lp-rise .35s ease both; }
+.lp-topic-bar { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; padding-bottom:14px; border-bottom:1px solid var(--line); }
+.lp-topic-title { display:flex; align-items:center; gap:10px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:clamp(17px,2.4vw,21px); letter-spacing:-0.01em; color:var(--ink); }
+.lp-topic-title svg { color:var(--mk2); }
+.lp-topic-count { font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:400; color:var(--mk2); background:var(--deep); border:1px solid var(--line); border-radius:999px; padding:2px 9px; }
+.lp-topic-note { margin-top:13px; display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--muted); background:rgba(244,164,58,0.08); border:1px solid rgba(244,164,58,0.25); border-radius:9px; padding:9px 13px; }
+.lp-topic-note svg { color:var(--muted); flex:none; }
+
+.lp-feed { margin-top:18px; display:grid; gap:14px; grid-template-columns:repeat(auto-fill,minmax(310px,1fr)); }
+.lp-card { background:rgba(16,46,64,0.84); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); border:1px solid var(--line); border-radius:15px; padding:18px; position:relative; overflow:hidden; animation:lp-rise .4s ease both; transition:border-color .18s,transform .18s; }
+.lp-card:hover { border-color:var(--line2); transform:translateY(-2px); }
+.lp-card::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--accent,var(--mk)); }
+.lp-card.watched { box-shadow:0 0 0 1px rgba(244,164,58,0.4), 0 8px 26px rgba(244,164,58,0.07); }
+@keyframes lp-rise { from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:none;} }
+.lp-c-top { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:11px; }
+.lp-cat { display:inline-flex; align-items:center; gap:7px; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted); }
+.lp-tags { display:inline-flex; align-items:center; gap:6px; }
+.lp-wbadge { display:inline-flex; align-items:center; gap:4px; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.05em; text-transform:uppercase; padding:3px 7px; border-radius:6px; background:rgba(244,164,58,0.16); color:var(--amber); }
+.lp-imp { display:inline-flex; align-items:center; gap:6px; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.05em; text-transform:uppercase; padding:3px 8px; border-radius:6px; }
+.lp-imp-dot { width:7px; height:7px; border-radius:50%; }
+.lp-hl { font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:16px; line-height:1.32; letter-spacing:-0.005em; }
+.lp-sum { font-size:13.5px; line-height:1.5; color:#C2D6E2; margin-top:9px; }
+.lp-matters { margin-top:12px; padding-top:11px; border-top:1px dashed var(--line); display:flex; gap:9px; }
+.lp-matters-l { font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.08em; text-transform:uppercase; color:var(--mk2); white-space:nowrap; padding-top:2px; }
+.lp-matters-t { font-size:12.5px; line-height:1.45; color:var(--muted); }
+.lp-src-row { margin-top:12px; display:inline-flex; align-items:center; gap:6px; font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--faint); }
+
+.lp-state { margin-top:50px; display:grid; place-items:center; text-align:center; gap:14px; color:var(--muted); }
+.lp-skel { background:var(--surface); border:1px solid var(--line); border-radius:15px; height:166px; position:relative; overflow:hidden; }
+.lp-skel::after { content:""; position:absolute; inset:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,0.04),transparent); animation:lp-sh 1.4s infinite; }
+
+.lp-overlay { position:fixed; inset:0; background:rgba(4,12,18,0.74); backdrop-filter:blur(3px); display:grid; place-items:center; padding:20px; z-index:60; animation:lp-fade .2s ease; }
+@keyframes lp-fade { from{opacity:0;} to{opacity:1;} }
+.lp-modal { background:var(--surface); border:1px solid var(--line2); border-radius:16px; width:min(680px,100%); max-height:86vh; display:flex; flex-direction:column; overflow:hidden; }
+.lp-modal-h { display:flex; align-items:center; justify-content:space-between; padding:16px 18px; border-bottom:1px solid var(--line); }
+.lp-modal-t { font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:16px; display:flex; align-items:center; gap:9px; }
+.lp-x { background:none; border:none; color:var(--muted); cursor:pointer; display:grid; place-items:center; padding:5px; border-radius:7px; }
+.lp-x:hover { color:var(--ink); background:var(--surface2); }
+.lp-brief { flex:1; overflow:auto; padding:16px 18px; font-family:'IBM Plex Mono',monospace; font-size:12.5px; line-height:1.6; color:#C2D6E2; white-space:pre-wrap; word-break:break-word; }
+.lp-modal-f { padding:14px 18px; border-top:1px solid var(--line); display:flex; justify-content:flex-end; gap:9px; }
+
+@media (max-width:880px){
+  .lp-shell { grid-template-columns:1fr; }
+  .lp-side { position:static; height:auto; border-right:none; border-bottom:1px solid var(--line); }
+  .lp-node-lbl { display:none; }
+  .lp-pipe-track,.lp-pipe-fill { top:18px; }
+}
+/* ambient background: maersk ship at sea */
+.lp-bg { position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none; }
+.lp-moon { position:absolute; top:-130px; right:-70px; width:440px; height:440px; border-radius:50%; background:radial-gradient(circle, rgba(111,210,239,0.20), rgba(66,176,213,0.06) 42%, transparent 70%); }
+.lp-star { position:absolute; width:2px; height:2px; border-radius:50%; background:#bfe4f2; opacity:.4; animation:lp-tw 5s ease-in-out infinite; }
+@keyframes lp-tw { 0%,100%{opacity:.15;} 50%{opacity:.7;} }
+.lp-sea { position:absolute; left:0; right:0; bottom:0; height:48%; background:linear-gradient(180deg, rgba(11,42,58,0) 0%, rgba(9,34,48,0.45) 20%, rgba(5,22,32,0.9) 100%); }
+.lp-wave { position:absolute; left:-50%; width:200%; height:70px; opacity:.5; }
+.lp-wave1 { bottom:31%; fill:#10455e; animation:lp-drift 22s ease-in-out infinite alternate; }
+.lp-wave2 { bottom:18%; opacity:.34; fill:#0c374c; animation:lp-driftB 33s ease-in-out infinite alternate; }
+.lp-wave3 { bottom:3%; opacity:.26; fill:#082633; animation:lp-drift 46s ease-in-out infinite alternate; }
+@keyframes lp-drift { from{transform:translateX(-3%);} to{transform:translateX(3%);} }
+@keyframes lp-driftB { from{transform:translateX(2.5%);} to{transform:translateX(-3.5%);} }
+.lp-ship { position:absolute; left:0; will-change:transform; }
+.lp-ship-far { top:43%; opacity:.34; filter:blur(.5px); animation:lp-sail 124s linear infinite; }
+.lp-ship-near { top:52%; opacity:.6; animation:lp-sail 80s linear infinite; animation-delay:-22s; }
+.lp-ship-bob { animation:lp-bob 6s ease-in-out infinite; transform-origin:center; }
+.lp-ship-far .lp-ship-bob { animation-duration:8.5s; }
+@keyframes lp-sail { from{transform:translateX(-360px);} to{transform:translateX(114vw);} }
+@keyframes lp-bob { 0%,100%{transform:translateY(0) rotate(-.5deg);} 50%{transform:translateY(-6px) rotate(.5deg);} }
+/* clickable cards */
+.lp-card { cursor:pointer; }
+.lp-card:focus-visible { border-color:var(--mk); outline:none; }
+.lp-c-foot { margin-top:13px; padding-top:11px; border-top:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.lp-c-src { font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--faint); display:inline-flex; gap:6px; align-items:center; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lp-c-src svg { flex:none; }
+.lp-c-cta { font-size:11.5px; font-weight:700; color:var(--mk2); display:inline-flex; align-items:center; gap:6px; white-space:nowrap; transition:gap .16s; }
+.lp-card:hover .lp-c-cta { gap:9px; }
+
+/* article reader */
+.lp-reader { position:fixed; inset:0; z-index:55; overflow:auto; background:linear-gradient(180deg, rgba(7,26,38,0.96), rgba(11,36,51,0.96)); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); animation:lp-fade .25s ease; }
+.lp-reader-inner { max-width:860px; margin:0 auto; padding:26px clamp(18px,5vw,40px) 70px; }
+.lp-back { display:inline-flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--line2); color:var(--mk2); cursor:pointer; font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.03em; padding:9px 14px; border-radius:10px; transition:border-color .16s; }
+.lp-back:hover { border-color:var(--mk); color:var(--ink); }
+.lp-detail { margin-top:22px; animation:lp-rise .35s ease both; }
+.lp-detail-meta { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.lp-detail-h1 { font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:clamp(25px,4vw,38px); line-height:1.16; letter-spacing:-0.02em; margin-top:16px; }
+.lp-detail-source { font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--muted); margin-top:14px; display:flex; align-items:center; gap:8px; }
+.lp-block { margin-top:26px; }
+.lp-block-h { display:flex; align-items:center; gap:9px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.12em; text-transform:uppercase; color:var(--muted); margin-bottom:12px; }
+.lp-block-p { font-size:16.5px; line-height:1.62; color:var(--ink); }
+.lp-impact-card { margin-top:26px; background:linear-gradient(135deg, rgba(66,176,213,0.13), rgba(16,46,64,0.55)); border:1px solid rgba(66,176,213,0.32); border-radius:18px; padding:22px 24px; }
+.lp-impact-card .lp-block-h { color:var(--mk2); }
+.lp-areas { display:flex; gap:8px; flex-wrap:wrap; margin:16px 0 2px; }
+.lp-area { display:inline-flex; align-items:center; gap:6px; font-family:inherit; font-size:11.5px; font-weight:600; padding:6px 12px; border-radius:999px; background:rgba(66,176,213,0.18); border:1px solid rgba(66,176,213,0.4); color:var(--mk2); cursor:pointer; transition:all .15s; }
+.lp-area:hover { background:rgba(66,176,213,0.32); border-color:var(--mk); color:#EAF7FC; }
+.lp-area svg { opacity:.7; }
+.lp-impl { margin-top:16px; display:flex; flex-direction:column; gap:11px; }
+.lp-impl-item { display:flex; gap:11px; font-size:14.5px; line-height:1.45; color:#CFE0EA; }
+.lp-impl-item svg { color:var(--mk); flex:none; margin-top:3px; }
+.lp-cta-row { margin-top:30px; padding-top:22px; border-top:1px solid var(--line); display:flex; align-items:center; gap:15px; flex-wrap:wrap; }
+.lp-cta { display:inline-flex; align-items:center; gap:9px; background:linear-gradient(150deg,var(--mk),#1E6E92); color:#04141C; border:none; border-radius:12px; padding:14px 22px; font-size:14.5px; font-weight:700; cursor:pointer; text-decoration:none; transition:filter .15s,transform .1s; }
+.lp-cta:hover { filter:brightness(1.07); }
+.lp-cta:active { transform:translateY(1px); }
+.lp-cta-note { font-size:12.5px; color:var(--faint); }
+.lp-analyzing { display:inline-flex; align-items:center; gap:8px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--mk2); }
+.lp-detail-skel { height:14px; border-radius:7px; background:rgba(255,255,255,0.05); position:relative; overflow:hidden; }
+.lp-detail-skel + .lp-detail-skel { margin-top:11px; }
+.lp-detail-skel::after { content:""; position:absolute; inset:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent); animation:lp-sh 1.4s infinite; }
+@media (prefers-reduced-motion: reduce){ .lp-card,.lp-live,.lp-skel::after,.lp-read-load::after,.lp-node.active .lp-dot,.lp-spin,.lp-ship,.lp-ship-bob,.lp-wave,.lp-star,.lp-detail-skel::after { animation:none !important; } .lp-ship-near{ transform:translateX(40vw);} .lp-ship-far{ transform:translateX(72vw);} }
+`;
+
+const CAT = {
+  "Ocean": { icon: Ship, color: "#42B0D5" },
+  "Air": { icon: Plane, color: "#8FB8FF" },
+  "E-commerce": { icon: ShoppingCart, color: "#B79CFF" },
+  "Ground": { icon: Truck, color: "#5BD6AE" },
+  "Ports & Chokepoints": { icon: Anchor, color: "#F4A43A" },
+  "Regulatory": { icon: Landmark, color: "#FF8FA3" },
+  "Maersk & Carriers": { icon: Building2, color: "#5EEAD4" },
+};
+const IMP = {
+  high: { color: "#FF6F61", label: "High impact", rank: 0 },
+  medium: { color: "#F4A43A", label: "Medium", rank: 1 },
+  low: { color: "#5BD6AE", label: "Low", rank: 2 },
+};
+const cm = (c) => CAT[c] || { icon: Radio, color: "#8AA7BA" };
+
+// Sample dataset so every control works instantly even with no API access.
+// Live web search replaces this whenever the app runs with API access.
+const DEMO_DATA = {
+  daily: [
+    { headline: "Red Sea diversions keep Asia to Europe ocean rates elevated", summary: "Carriers continue routing around the Cape, adding transit days and cost across the trade.", whyItMatters: "build extra transit buffer into ocean injection timelines", category: "Ocean", impact: "high", source: "Journal of Commerce", url: "https://www.joc.com" },
+    { headline: "Panama Canal eases draft limits as water levels recover", summary: "Authorities restored additional daily transit slots after drought restrictions lifted.", whyItMatters: "west coast routing pressure loosens for planning", category: "Ports & Chokepoints", impact: "medium", source: "Reuters", url: "https://www.reuters.com/business/logistics" },
+    { headline: "Gemini Cooperation reports schedule reliability above 90%", summary: "Maersk and Hapag-Lloyd cite strong early network performance on the new hub and spoke model.", whyItMatters: "network stability supports tighter delivery commitments", category: "Maersk & Carriers", impact: "high", source: "Maersk", url: "https://www.maersk.com/news" },
+    { headline: "US parcel volumes climb ahead of peak season", summary: "Last mile and injection partners are scaling capacity as e-commerce demand ramps.", whyItMatters: "capacity planning for SpeedX style injections", category: "E-commerce", impact: "medium", source: "Supply Chain Dive", url: "https://www.supplychaindive.com" },
+    { headline: "New US tariff schedule prompts importers to rebook", summary: "Shippers are shifting timing and lanes to manage exposure to the revised duties.", whyItMatters: "watch for shifts in client shipment timing", category: "Regulatory", impact: "medium", source: "FreightWaves", url: "https://www.freightwaves.com" },
+  ],
+  weekly: [
+    { headline: "Transpacific spot rates soften as capacity returns", summary: "Added sailings have eased pricing on the eastbound trade over the past week.", whyItMatters: "an opening to lock favorable ocean pricing", category: "Ocean", impact: "medium", source: "Drewry", url: "https://www.drewry.co.uk" },
+    { headline: "Air cargo demand holds steady on e-commerce strength", summary: "Volumes stayed firm through the week as online retail underpinned tonnage.", whyItMatters: "air remains a viable expedite option", category: "Air", impact: "medium", source: "IATA", url: "https://www.iata.org" },
+    { headline: "US intermodal rail volumes tick up week over week", summary: "Domestic container traffic rose modestly, a sign of steady inland demand.", whyItMatters: "intermodal capacity looks dependable near term", category: "Ground", impact: "low", source: "AAR", url: "https://www.aar.org" },
+    { headline: "Labor talks at key US ports raise contingency questions", summary: "Negotiations at major gateways have shippers reviewing fallback routings.", whyItMatters: "the main contingency to brief your team on", category: "Ports & Chokepoints", impact: "high", source: "Journal of Commerce", url: "https://www.joc.com" },
+    { headline: "Integrators expand end to end logistics offerings", summary: "Major carriers continue building out door to door services beyond ocean.", whyItMatters: "context for positioning integrated implementations", category: "Maersk & Carriers", impact: "medium", source: "The Loadstar", url: "https://theloadstar.com" },
+  ],
+};
+const DEMO_SOURCES = [
+  { title: "Journal of Commerce", url: "https://www.joc.com" },
+  { title: "Reuters Logistics", url: "https://www.reuters.com/business/logistics" },
+  { title: "Maersk Newsroom", url: "https://www.maersk.com/news" },
+  { title: "Supply Chain Dive", url: "https://www.supplychaindive.com" },
+  { title: "FreightWaves", url: "https://www.freightwaves.com" },
+  { title: "Drewry", url: "https://www.drewry.co.uk" },
+];
+const DEMO_SYNTH = "Rates stay firm where chokepoints bite and soften where capacity returns, so the near term theme is selective tightness rather than a broad swing. For your work that means holding buffer on Red Sea exposed ocean legs, leaning into the easing on transpacific, and keeping US port labor talks as the main contingency to brief your team on.";
+
+// Strait of Hormuz / Iran dedicated watch (sample data; live web search replaces it when hosted)
+const DEMO_HORMUZ = {
+  status: "Elevated",
+  situation: "Tension around the Strait of Hormuz remains a live risk for Gulf shipping, with heightened naval activity and continued sensitivity in energy markets. Container volumes through the strait are smaller than energy traffic, but for Maersk the watch level is up on Middle East and India ocean services, war risk insurance, and possible rerouting. The practical posture for now is contingency planning and close customer communication rather than confirmed disruption.",
+  updates: [
+    { headline: "Heightened naval activity reported near Strait of Hormuz", summary: "Reports point to increased military presence and periodic tension in and around the strait, keeping disruption risk in focus.", whyItMatters: "raises war risk premiums on Gulf ocean legs", category: "Ports & Chokepoints", impact: "high", source: "Reuters", url: "https://www.reuters.com/business/logistics" },
+    { headline: "Carriers review Gulf routing and insurance cover", summary: "Lines are reassessing Middle East service routings and war risk insurance as a precaution.", whyItMatters: "contingency planning for Gulf and India services", category: "Ocean", impact: "high", source: "Lloyd's List", url: "https://www.lloydslist.com" },
+    { headline: "Energy prices swing on Hormuz disruption fears", summary: "Oil markets stay sensitive to any threat to the strait, which carries a large share of seaborne crude.", whyItMatters: "bunker fuel cost pressure feeds into ocean rates", category: "Regulatory", impact: "medium", source: "Bloomberg", url: "https://www.bloomberg.com" },
+    { headline: "Maersk monitoring Middle East network conditions", summary: "Carriers including Maersk continue to watch the region and share contingency options with customers.", whyItMatters: "direct signal for your Gulf and India implementations", category: "Maersk & Carriers", impact: "medium", source: "Maersk", url: "https://www.maersk.com/news" },
+  ],
+};
+function parseHormuz(text) {
+  let clean = (text || "").replace(/```json|```/g, "").trim();
+  const a = clean.indexOf("{"), z = clean.lastIndexOf("}");
+  const body = (a !== -1 && z !== -1) ? clean.slice(a, z + 1) : clean;
+  try { const p = JSON.parse(body); if (p && (p.updates || p.situation)) return { status: p.status || "Watch", situation: p.situation || "", updates: asArr(p.updates) }; } catch {}
+  return null;
+}
+
+// article detail: ties each story back to Maersk's lines of business
+const AREA_BY_CAT = {
+  "Ocean": ["Ocean"],
+  "Air": ["Air Freight"],
+  "E-commerce": ["E-commerce", "Last Mile"],
+  "Ground": ["Ground & Intermodal"],
+  "Ports & Chokepoints": ["Ocean", "Landside Ops"],
+  "Regulatory": ["Customs & Compliance"],
+  "Maersk & Carriers": ["Integrated Logistics"],
+};
+// maps a detail-view business-line label back to a feed category for filtering
+const AREA_TO_CAT = {
+  "Ocean": "Ocean",
+  "Air Freight": "Air",
+  "E-commerce": "E-commerce",
+  "Last Mile": "E-commerce",
+  "Ground & Intermodal": "Ground",
+  "Landside Ops": "Ports & Chokepoints",
+  "Customs & Compliance": "Regulatory",
+  "Integrated Logistics": "Maersk & Carriers",
+};
+const IMPL_BY_CAT = {
+  "Ocean": ["Reassess transit time buffers on the affected lanes", "Confirm space and rate validity with carriers", "Flag schedule risk to customers early"],
+  "Air": ["Keep air freight ready as an expedite lever", "Watch capacity and rate movement week over week", "Match mode selection to shipment urgency"],
+  "E-commerce": ["Validate last mile and injection capacity", "Stress test peak volume assumptions", "Coordinate SLAs with parcel partners"],
+  "Ground": ["Confirm intermodal capacity and lead times", "Balance cost against speed on inland legs", "Line up drayage scheduling early"],
+  "Ports & Chokepoints": ["Build contingency routings for the affected gateways", "Monitor dwell and congestion daily", "Communicate possible delays to stakeholders"],
+  "Regulatory": ["Review impacted shipments for compliance", "Advise clients on timing and cost exposure", "Update documentation requirements"],
+  "Maersk & Carriers": ["Use network reliability in delivery commitments", "Align implementation timelines to service updates", "Brief commercial teams on positioning"],
+  "default": ["Assess relevance to active implementations", "Brief the team on the potential impact", "Monitor the story for developments"],
+};
+const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+function buildDemoDetail(item) {
+  const areas = AREA_BY_CAT[item.category] || ["Integrated Logistics"];
+  const impl = IMPL_BY_CAT[item.category] || IMPL_BY_CAT.default;
+  return {
+    whatHappened: `${item.summary} The story was reported by ${item.source} and sits in the ${item.category} space.`,
+    maerskImpact: `For Maersk, this lands closest to the ${areas.join(" and ")} side of the business. ${cap(item.whyItMatters)}. For an implementation team the practical read is to treat it as a ${item.impact} priority and adjust planning on exposed lanes accordingly.`,
+    affectedAreas: areas,
+    implications: impl,
+  };
+}
+function parseDetail(text) {
+  let clean = (text || "").replace(/```json|```/g, "").trim();
+  const a = clean.indexOf("{"), z = clean.lastIndexOf("}");
+  if (a !== -1 && z !== -1) clean = clean.slice(a, z + 1);
+  try {
+    const p = JSON.parse(clean);
+    if (p && p.maerskImpact) return { whatHappened: p.whatHappened || "", maerskImpact: p.maerskImpact, affectedAreas: asArr(p.affectedAreas), implications: asArr(p.implications) };
+  } catch {}
+  return null;
+}
+
+// highlights occurrences of the active search term inside a string
+function Highlight({ text, q }) {
+  if (!q || !text) return text || null;
+  const lower = text.toLowerCase(); const out = []; let from = 0, k, idx = 0;
+  while ((k = lower.indexOf(q, from)) !== -1) {
+    if (k > from) out.push(<span key={idx++}>{text.slice(from, k)}</span>);
+    out.push(<mark key={idx++} className="lp-mark">{text.slice(k, k + q.length)}</mark>);
+    from = k + q.length;
+  }
+  if (from < text.length) out.push(<span key={idx++}>{text.slice(from)}</span>);
+  return <>{out}</>;
+}
+
+function parseTopic(text) {
+  let clean = (text || "").replace(/```json|```/g, "").trim();
+  const a = clean.indexOf("{"), z = clean.lastIndexOf("}");
+  const body = (a !== -1 && z !== -1) ? clean.slice(a, z + 1) : clean;
+  try { const p = JSON.parse(body); if (Array.isArray(p.results)) return p.results; if (Array.isArray(p)) return p; } catch {}
+  const isItem = (o) => o && typeof o === "object" && "headline" in o;
+  return extractObjects(clean).filter(isItem);
+}
+
+const PIPE = [
+  { icon: Target, label: "Plan queries" },
+  { icon: Globe, label: "Search sources" },
+  { icon: Filter, label: "Filter relevance" },
+  { icon: BarChart3, label: "Rank by impact" },
+  { icon: Sparkles, label: "Synthesize" },
+];
+
+const hasStore = () => typeof window !== "undefined" && window.storage;
+const sGet = async (k) => { try { if (!hasStore()) return null; const r = await window.storage.get(k); return r ? JSON.parse(r.value) : null; } catch { return null; } };
+const sSet = async (k, v) => { try { if (!hasStore()) return; await window.storage.set(k, JSON.stringify(v)); } catch {} };
+
+// Tolerant feed parser: strict JSON first, then salvage complete items from a
+// response that got truncated at the token cap (recovers what came back intact).
+const asArr = (a) => (Array.isArray(a) ? a : []);
+function extractObjects(s) {
+  const objs = []; const stack = []; let inStr = false, esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) { if (esc) esc = false; else if (ch === "\\") esc = true; else if (ch === '"') inStr = false; continue; }
+    if (ch === '"') { inStr = true; continue; }
+    if (ch === "{") stack.push(i);
+    else if (ch === "}") { const st = stack.pop(); if (st !== undefined) { try { objs.push(JSON.parse(s.slice(st, i + 1))); } catch {} } }
+  }
+  return objs;
+}
+function parseFeed(text) {
+  let clean = (text || "").replace(/```json|```/g, "").trim();
+  const a = clean.indexOf("{"), z = clean.lastIndexOf("}");
+  const body = (a !== -1 && z !== -1) ? clean.slice(a, z + 1) : clean;
+  try { const p = JSON.parse(body); if (p.daily || p.weekly) return { daily: asArr(p.daily), weekly: asArr(p.weekly) }; } catch {}
+  const wi = clean.search(/"weekly"\s*:/);
+  const dRegion = wi !== -1 ? clean.slice(0, wi) : clean;
+  const wRegion = wi !== -1 ? clean.slice(wi) : "";
+  const isItem = (o) => o && typeof o === "object" && "headline" in o;
+  return { daily: extractObjects(dRegion).filter(isItem), weekly: extractObjects(wRegion).filter(isItem) };
+}
+
+const CONTAINER_COLORS = ["#C75D4F", "#4FA6B5", "#D9A441", "#7E8C99", "#3F6E86", "#B5573F", "#5BA88C", "#C98A3E"];
+function ShipSVG({ width = 250 }) {
+  const boxes = [];
+  let x = 70, ci = 0;
+  while (x < 226) {
+    const stack = 2 + (Math.floor(x / 14) % 3);
+    for (let r = 0; r < stack; r++) {
+      boxes.push(<rect key={`${x}-${r}`} x={x} y={47 - (r + 1) * 7.6} width={11.5} height={6.6} rx={1} fill={CONTAINER_COLORS[(ci + r) % CONTAINER_COLORS.length]} opacity={0.95} />);
+    }
+    x += 14; ci++;
+  }
+  return (
+    <svg width={width} height={width * (96 / 280)} viewBox="0 0 280 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* wake */}
+      <path d="M2,84 Q40,80 60,84 Q40,88 2,90 Z" fill="#bfe4f2" opacity="0.10" />
+      {/* hull */}
+      <path d="M34,47 L242,47 L268,60 L250,76 L52,76 Q36,76 34,47 Z" fill="#3F9BBF" />
+      <path d="M34,47 L242,47 L268,60 L266,63 L242,50 L34,50 Z" fill="#5EC0E0" opacity="0.7" />
+      <path d="M52,76 L250,76 L256,69 L48,69 Z" fill="#0E3A50" />
+      {/* superstructure / bridge at stern */}
+      <rect x="40" y="22" width="22" height="25" rx="1.5" fill="#E8F1F6" />
+      <rect x="40" y="22" width="22" height="6" fill="#CBDCE6" />
+      <rect x="43" y="31" width="3.5" height="3.5" fill="#2C4F60" />
+      <rect x="49" y="31" width="3.5" height="3.5" fill="#2C4F60" />
+      <rect x="55" y="31" width="3.5" height="3.5" fill="#2C4F60" />
+      <rect x="43" y="38" width="3.5" height="3.5" fill="#2C4F60" />
+      <rect x="49" y="38" width="3.5" height="3.5" fill="#2C4F60" />
+      {/* funnel with star nod */}
+      <rect x="46" y="9" width="11" height="14" rx="1.5" fill="#0E3A50" />
+      <rect x="46" y="13" width="11" height="3" fill="#42B0D5" />
+      <path d="M51.5,16.5 l1.1,2.4 l2.6,.2 l-2,1.7 .7,2.5 -2.4,-1.4 -2.4,1.4 .7,-2.5 -2,-1.7 2.6,-.2 Z" fill="#bfe4f2" opacity="0.9" />
+      {/* containers */}
+      {boxes}
+      {/* mast */}
+      <rect x="232" y="34" width="2" height="13" fill="#0E3A50" />
+    </svg>
+  );
+}
+
+function OceanBg() {
+  const stars = [
+    [6, 12], [14, 26], [22, 9], [31, 20], [44, 14], [58, 8], [66, 22], [74, 12], [83, 28], [90, 10], [38, 30], [52, 24],
+  ];
+  return (
+    <div className="lp-bg" aria-hidden="true">
+      <div className="lp-moon" />
+      {stars.map(([l, t], i) => (<span key={i} className="lp-star" style={{ left: `${l}%`, top: `${t}%`, animationDelay: `${(i % 5) * 0.7}s` }} />))}
+      <div className="lp-sea" />
+      <svg className="lp-wave lp-wave1" viewBox="0 0 1440 70" preserveAspectRatio="none"><path d="M0,34 C220,60 380,8 720,34 C1060,60 1240,10 1440,34 L1440,70 L0,70 Z" /></svg>
+      <svg className="lp-wave lp-wave2" viewBox="0 0 1440 70" preserveAspectRatio="none"><path d="M0,30 C260,8 420,58 720,32 C1020,6 1220,58 1440,30 L1440,70 L0,70 Z" /></svg>
+      <svg className="lp-wave lp-wave3" viewBox="0 0 1440 70" preserveAspectRatio="none"><path d="M0,36 C200,58 400,14 720,36 C1040,58 1240,14 1440,36 L1440,70 L0,70 Z" /></svg>
+      <div className="lp-ship lp-ship-far"><div className="lp-ship-bob"><ShipSVG width={150} /></div></div>
+      <div className="lp-ship lp-ship-near"><div className="lp-ship-bob"><ShipSVG width={250} /></div></div>
+    </div>
+  );
+}
+
+export default function LogisticsPulse() {
+  const [tab, setTab] = useState("daily");
+  const [filter, setFilter] = useState("All");
+  const [data, setData] = useState({ daily: [], weekly: [] });
+  const [synthesis, setSynthesis] = useState("");
+  const [synthLoading, setSynthLoading] = useState(false);
+  const [sources, setSources] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [dataMode, setDataMode] = useState("live");
+  const [selectedArticle, setSelectedArticle] = useState(null);
+  const [articleDetail, setArticleDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [query, setQuery] = useState("");
+  const [topicMode, setTopicMode] = useState(false);
+  const [topicQuery, setTopicQuery] = useState("");
+  const [topicResults, setTopicResults] = useState([]);
+  const [topicLoading, setTopicLoading] = useState(false);
+  const [topicDemo, setTopicDemo] = useState(false);
+  const [topicSources, setTopicSources] = useState(0);
+  const [hormuzData, setHormuzData] = useState(null);
+  const [hormuzLoading, setHormuzLoading] = useState(true);
+  const [hormuzDemo, setHormuzDemo] = useState(false);
+  const [hormuzCollapsed, setHormuzCollapsed] = useState(false);
+  const [showTip, setShowTip] = useState(true);
+  const [updated, setUpdated] = useState(null);
+
+  const [watchlist, setWatchlist] = useState([]);
+  const [watchInput, setWatchInput] = useState("");
+  const [highImpactOnly, setHighImpactOnly] = useState(false);
+  const [sortByImpact, setSortByImpact] = useState(true);
+  const [watchlistOnly, setWatchlistOnly] = useState(false);
+
+  const [agentPhase, setAgentPhase] = useState("running"); // running | done
+  const [agentStep, setAgentStep] = useState(0);
+  const [showAgent, setShowAgent] = useState(true);
+  const [showHow, setShowHow] = useState(false);
+  const [showBriefing, setShowBriefing] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const ready = useRef(false);
+  const timer = useRef(null);
+
+  const generateSynthesis = useCallback(async (items) => {
+    if (!items || !items.length) { setSynthesis(""); setAgentPhase("done"); setAgentStep(5); setShowAgent(false); return; }
+    setSynthLoading(true);
+    const lines = items.map((i) => `- [${i.impact}] ${i.category}: ${i.headline}. ${i.summary}`).join("\n");
+    const prompt = `You are briefing a Maersk implementation project manager. Based only on these current logistics headlines, write a 2 to 3 sentence executive read of what today means for their work. Be specific and practical. No preamble, no markdown, plain prose, and do not use em dashes.\n\n${lines}`;
+    try {
+      const res = await fetch(API_URL, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
+      });
+      const json = await res.json();
+      setSynthesis((json.content || []).map((b) => (b.type === "text" ? b.text : "")).filter(Boolean).join(" ").trim());
+    } catch { setSynthesis(""); }
+    finally { setSynthLoading(false); setAgentPhase("done"); setAgentStep(5); setShowAgent(false); }
+  }, []);
+
+  const loadHormuz = useCallback(async (live) => {
+    setHormuzLoading(true);
+    const demo = () => { setHormuzData(DEMO_HORMUZ); setHormuzDemo(true); setHormuzLoading(false); };
+    if (!live) { setTimeout(demo, 500); return; }
+    const prompt = `You are a maritime risk analyst for a Maersk implementation project manager. Use web search to find the LATEST status of the Strait of Hormuz and the Iran situation as it affects global shipping, ocean freight, war risk insurance, and Maersk specifically. Respond with ONLY a JSON object, no markdown or preamble, no em dashes. Schema:
+{"status":"Calm|Watch|Elevated|High","situation":"2 to 3 sentence current situation read tied to Maersk and ocean logistics","updates":[{"headline":"max 12 words","summary":"1 to 2 sentences","whyItMatters":"short clause tied to a Maersk PM","category":"Ports & Chokepoints|Ocean|Regulatory|Maersk & Carriers","impact":"high|medium|low","source":"publication name","url":"link to the source article"}]} with up to 4 updates.`;
+    try {
+      const res = await fetch(API_URL, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }], tools: [{ type: "web_search_20250305", name: "web_search" }] }),
+      });
+      const json = await res.json();
+      const text = (json.content || []).map((b) => (b.type === "text" ? b.text : "")).filter(Boolean).join("\n");
+      const parsed = parseHormuz(text);
+      if (parsed && parsed.updates.length) { setHormuzData(parsed); setHormuzDemo(false); setHormuzLoading(false); }
+      else demo();
+    } catch { demo(); }
+  }, []);
+
+  const loadDemo = useCallback(() => {
+    clearInterval(timer.current);
+    setData(DEMO_DATA); setSources(DEMO_SOURCES); setUpdated(new Date());
+    setSynthesis(DEMO_SYNTH); setSynthLoading(false);
+    setDataMode("demo"); setLoading(false); setError(null);
+    setAgentPhase("done"); setAgentStep(5); setShowAgent(false);
+    loadHormuz(false);
+  }, [loadHormuz]);
+
+  const generateArticleDetail = useCallback(async (item, live) => {
+    setDetailLoading(true); setArticleDetail(null);
+    if (!live) { // sample mode: synthesize locally
+      setTimeout(() => { setArticleDetail(buildDemoDetail(item)); setDetailLoading(false); }, 480);
+      return;
+    }
+    const prompt = `You are a supply chain analyst advising a Maersk implementation project manager. For the logistics news item below, respond with ONLY a JSON object, no markdown or preamble, no em dashes, tying everything back to Maersk's lines of business (ocean, air freight, e-commerce and last mile, ground and intermodal, integrated logistics). Schema:
+{"whatHappened":"2 to 3 sentence plain summary of the development","maerskImpact":"2 to 3 sentences on how this specifically affects Maersk and a Maersk implementation PM","affectedAreas":["the Maersk business lines most affected"],"implications":["3 short, concrete actions or watch points for the PM"]}
+
+Item: headline="${item.headline}"; summary="${item.summary}"; category="${item.category}"; impact="${item.impact}"; source="${item.source}".`;
+    try {
+      const res = await fetch(API_URL, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
+      });
+      const json = await res.json();
+      const text = (json.content || []).map((b) => (b.type === "text" ? b.text : "")).filter(Boolean).join("\n");
+      setArticleDetail(parseDetail(text) || buildDemoDetail(item));
+    } catch { setArticleDetail(buildDemoDetail(item)); }
+    finally { setDetailLoading(false); }
+  }, []);
+
+  const openArticle = useCallback((item) => {
+    setSelectedArticle(item);
+    generateArticleDetail(item, dataMode === "live");
+    if (typeof window !== "undefined" && window.scrollTo) window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [generateArticleDetail, dataMode]);
+  const closeArticle = useCallback(() => { setSelectedArticle(null); setArticleDetail(null); }, []);
+
+  const filterByArea = useCallback((areaLabel) => {
+    const catKey = AREA_TO_CAT[areaLabel] || areaLabel;
+    const inTab = (t) => (data[t] || []).some((i) => i.category === catKey);
+    let target = tab;
+    if (!inTab(tab) && inTab(tab === "daily" ? "weekly" : "daily")) target = tab === "daily" ? "weekly" : "daily";
+    setTab(target); setFilter(catKey); setWatchlistOnly(false); setHighImpactOnly(false);
+    closeArticle();
+    if (typeof window !== "undefined" && window.scrollTo) window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [data, tab, closeArticle]);
+
+  const exitTopic = useCallback(() => { setTopicMode(false); setTopicQuery(""); setTopicResults([]); setTopicDemo(false); setTopicSources(0); setQuery(""); }, []);
+
+  const runTopicSearch = useCallback(async (text) => {
+    const t = (text || "").trim();
+    if (!t) return;
+    setTopicMode(true); setTopicQuery(t); setTopicLoading(true); setTopicResults([]); setTopicDemo(false); setTopicSources(0);
+    if (typeof window !== "undefined" && window.scrollTo) window.scrollTo({ top: 0, behavior: "smooth" });
+    const fallback = () => {
+      const seen = new Set();
+      const combined = [...(data.daily || []), ...(data.weekly || [])].filter((i) => {
+        if (seen.has(i.headline)) return false; seen.add(i.headline);
+        return `${i.headline} ${i.summary} ${i.category} ${i.source} ${i.whyItMatters || ""}`.toLowerCase().includes(t.toLowerCase());
+      });
+      setTopicResults(combined); setTopicDemo(true); setTopicLoading(false);
+    };
+    if (dataMode !== "live") { setTimeout(fallback, 650); return; }
+    const prompt = `You are a supply chain analyst for a Maersk implementation project manager. Use web search to find the most relevant RECENT logistics and supply chain news specifically about: "${t}". Tie relevance to Maersk's businesses (ocean, air freight, e-commerce and last mile, ground and intermodal, integrated logistics). Respond with ONLY a JSON object, no markdown or preamble, up to 6 items. Schema:
+{"results":[{"headline":"max 12 words","summary":"1 to 2 sentences","whyItMatters":"short clause tied to a Maersk PM","category":"Ocean|Air|E-commerce|Ground|Ports & Chokepoints|Regulatory|Maersk & Carriers","impact":"high|medium|low","source":"publication name","url":"link to the source article"}]}`;
+    try {
+      const res = await fetch(API_URL, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }], tools: [{ type: "web_search_20250305", name: "web_search" }] }),
+      });
+      const json = await res.json();
+      const blocks = json.content || [];
+      const txt = blocks.map((b) => (b.type === "text" ? b.text : "")).filter(Boolean).join("\n");
+      let srcCount = 0;
+      blocks.filter((b) => b.type === "web_search_tool_result").forEach((b) => (b.content || []).forEach((r) => { if (r && r.url) srcCount++; }));
+      const items = parseTopic(txt);
+      if (items.length) { setTopicResults(items); setTopicSources(srcCount); setTopicLoading(false); }
+      else fallback();
+    } catch { fallback(); }
+  }, [data, dataMode]);
+
+  const fetchEvents = useCallback(async () => {
+    setLoading(true); setError(null);
+    setAgentPhase("running"); setAgentStep(0); setShowAgent(true); setSources([]);
+    clearInterval(timer.current);
+    timer.current = setInterval(() => setAgentStep((s) => (s < 3 ? s + 1 : s)), 780);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const prompt = `You are a supply chain intelligence analyst briefing a Maersk implementation project manager and his team. Today is ${today}.
+
+Use web search to find the most important CURRENT supply chain and logistics events. Maersk operates across ocean freight, air freight, e-commerce / last-mile parcel, and ground / intermodal, plus integrated logistics. Prioritize: ocean rates and capacity, port congestion, canal and chokepoint status (Red Sea / Suez, Panama Canal), carrier alliances including the Gemini Cooperation, e-commerce and parcel logistics, tariffs and customs / regulatory changes, and Maersk specific news.
+
+Return TWO sets:
+- "daily": 5 items that broke in roughly the last 24 to 48 hours
+- "weekly": 5 trends or developments from the last 7 days
+
+Respond with ONLY a valid JSON object. No markdown, no code fences, no preamble or closing text. Keep every field tight. Schema:
+{"daily":[{"headline":"max 12 words","summary":"1 to 2 sentences","whyItMatters":"one short clause tied to a Maersk PM's work","category":"Ocean|Air|E-commerce|Ground|Ports & Chokepoints|Regulatory|Maersk & Carriers","impact":"high|medium|low","source":"publication name"}],"weekly":[ same shape ]}`;
+    try {
+      const res = await fetch(API_URL, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }], tools: [{ type: "web_search_20250305", name: "web_search" }] }),
+      });
+      const json = await res.json();
+      const blocks = json.content || [];
+      const text = blocks.map((b) => (b.type === "text" ? b.text : "")).filter(Boolean).join("\n");
+      const srcs = []; const seen = new Set();
+      blocks.filter((b) => b.type === "web_search_tool_result").forEach((b) => (b.content || []).forEach((r) => {
+        if (r && r.url && !seen.has(r.url)) { seen.add(r.url); srcs.push({ title: r.title || r.url, url: r.url }); }
+      }));
+      const next = parseFeed(text);
+      if (!next.daily.length && !next.weekly.length) throw new Error("empty");
+      clearInterval(timer.current); setAgentStep(4);
+      setData(next); setSources(srcs.slice(0, 10)); setUpdated(new Date()); setDataMode("live"); setLoading(false);
+      generateSynthesis(next.daily);
+      loadHormuz(true);
+    } catch {
+      loadDemo();
+    }
+  }, [generateSynthesis, loadDemo, loadHormuz]);
+
+  useEffect(() => {
+    (async () => {
+      const [wl, prefs, cache] = await Promise.all([sGet("lp:watchlist"), sGet("lp:prefs"), sGet("lp:cache")]);
+      if (Array.isArray(wl)) setWatchlist(wl);
+      if (prefs) {
+        if (typeof prefs.highImpactOnly === "boolean") setHighImpactOnly(prefs.highImpactOnly);
+        if (typeof prefs.sortByImpact === "boolean") setSortByImpact(prefs.sortByImpact);
+        if (prefs.tab) setTab(prefs.tab);
+        if (typeof prefs.tipDismissed === "boolean") setShowTip(!prefs.tipDismissed);
+      }
+      ready.current = true;
+      if (cache && cache.data && (cache.data.daily?.length || cache.data.weekly?.length)) {
+        setData(cache.data); setSynthesis(cache.synthesis || ""); setSources(cache.sources || []);
+        setUpdated(cache.updated ? new Date(cache.updated) : null);
+        setAgentPhase("done"); setAgentStep(5); setShowAgent(false); setLoading(false);
+        loadHormuz(true);
+      } else { fetchEvents(); }
+    })();
+    return () => clearInterval(timer.current);
+  }, [fetchEvents, loadHormuz]);
+
+  useEffect(() => { if (ready.current) sSet("lp:watchlist", watchlist); }, [watchlist]);
+  useEffect(() => { if (ready.current) sSet("lp:prefs", { highImpactOnly, sortByImpact, tab, tipDismissed: !showTip }); }, [highImpactOnly, sortByImpact, tab, showTip]);
+  useEffect(() => { if (ready.current && updated && (data.daily.length || data.weekly.length)) sSet("lp:cache", { data, synthesis, sources, updated: updated.toISOString() }); }, [data, synthesis, sources, updated]);
+
+  const addWatch = () => { const v = watchInput.trim(); if (v && !watchlist.some((w) => w.toLowerCase() === v.toLowerCase())) setWatchlist([...watchlist, v]); setWatchInput(""); };
+  const removeWatch = (w) => setWatchlist(watchlist.filter((x) => x !== w));
+
+  const items = data[tab] || [];
+  const isWatched = (i) => watchlist.length > 0 && watchlist.some((w) => `${i.headline} ${i.summary} ${i.category} ${i.source}`.toLowerCase().includes(w.toLowerCase()));
+  const categories = ["All", ...Array.from(new Set(items.map((i) => i.category)))];
+  const highCount = items.filter((i) => i.impact === "high").length;
+
+  const q = query.trim().toLowerCase();
+  const matchQ = (i) => !q || `${i.headline} ${i.summary} ${i.category} ${i.source} ${i.whyItMatters || ""}`.toLowerCase().includes(q);
+  const otherTab = tab === "daily" ? "weekly" : "daily";
+  const otherMatches = q ? (data[otherTab] || []).filter(matchQ).length : 0;
+
+  let visible = items.slice();
+  if (filter !== "All") visible = visible.filter((i) => i.category === filter);
+  if (highImpactOnly) visible = visible.filter((i) => i.impact === "high");
+  if (watchlistOnly) visible = visible.filter(isWatched);
+  if (q) visible = visible.filter(matchQ);
+  visible.sort((x, y) => {
+    const wx = isWatched(x) ? 0 : 1, wy = isWatched(y) ? 0 : 1;
+    if (wx !== wy) return wx - wy;
+    if (sortByImpact) return (IMP[x.impact]?.rank ?? 1) - (IMP[y.impact]?.rank ?? 1);
+    return 0;
+  });
+
+  const buildBriefing = () => {
+    const scope = tab === "daily" ? "Daily (last 24 to 48 hours)" : "Weekly (last 7 days)";
+    const d = new Date();
+    let out = `MAERSK LOGISTICS BRIEFING | ${d.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric", year: "numeric" })}\n`;
+    out += `Scope: ${scope}\nPrepared from Logistics Pulse\n\n`;
+    if (tab === "daily" && synthesis) out += `TODAY'S READ\n${synthesis}\n\n`;
+    const groups = {}; items.forEach((i) => { (groups[i.category] = groups[i.category] || []).push(i); });
+    Object.keys(groups).forEach((cat) => {
+      out += `[ ${cat.toUpperCase()} ]\n`;
+      groups[cat].forEach((i) => { out += `${isWatched(i) ? "* " : ""}${i.headline} [${(i.impact || "").toUpperCase()}]\n  ${i.summary} (${i.source})\n`; });
+      out += `\n`;
+    });
+    if (watchlist.length) out += `* = matches your watchlist\n`;
+    return out.trim();
+  };
+  const briefingText = showBriefing ? buildBriefing() : "";
+  const copyBriefing = async () => { try { await navigator.clipboard.writeText(briefingText); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch {} };
+
+  const fmtTime = (d) => d ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + " " + d.toLocaleDateString([], { month: "short", day: "numeric" }) : "--";
+  const fillPct = agentPhase === "done" ? 100 : Math.min(100, (agentStep / (PIPE.length - 1)) * 100);
+
+  const Switch = ({ on, onClick, icon: Ic, label, disabled }) => (
+    <button className={`lp-switch ${on ? "on" : ""}`} onClick={onClick} disabled={disabled}>
+      <span><Ic size={15} /> {label}</span>
+      <span className="lp-track"><span className="lp-knob" /></span>
+    </button>
+  );
+
+  const renderCard = (item, idx) => {
+    const meta = cm(item.category); const Ic = meta.icon; const im = IMP[item.impact] || IMP.medium; const watched = isWatched(item);
+    return (
+      <div className={`lp-card ${watched ? "watched" : ""}`} key={idx} style={{ "--accent": meta.color, animationDelay: `${idx * 0.05}s` }} role="button" tabIndex={0} onClick={() => openArticle(item)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openArticle(item); } }}>
+        <div className="lp-c-top">
+          <span className="lp-cat"><Ic size={13} color={meta.color} /> {item.category}</span>
+          <span className="lp-tags">
+            {watched && <span className="lp-wbadge"><Star size={9} /> Watch</span>}
+            <span className="lp-imp" style={{ background: `${im.color}1A`, color: im.color }}><span className="lp-imp-dot" style={{ background: im.color }} />{im.label}</span>
+          </span>
+        </div>
+        <div className="lp-hl"><Highlight text={item.headline} q={q} /></div>
+        <div className="lp-sum"><Highlight text={item.summary} q={q} /></div>
+        {item.whyItMatters && (<div className="lp-matters"><span className="lp-matters-l">For you</span><span className="lp-matters-t">{item.whyItMatters}</span></div>)}
+        <div className="lp-c-foot">
+          <span className="lp-c-src"><ExternalLink size={11} /> {item.source}</span>
+          <span className="lp-c-cta">View Maersk impact <ArrowRight size={13} /></span>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="lp-root">
+      <style>{STYLES}</style>
+      <OceanBg />
+      <div className="lp-shell">
+
+        {/* SIDEBAR */}
+        <aside className="lp-side">
+          <div className="lp-brand">
+            <div className="lp-mark"><Anchor size={21} strokeWidth={2.2} /></div>
+            <div><div className="lp-bname">Logistics Pulse</div><div className="lp-btag">Agentic Intel / Maersk</div></div>
+          </div>
+
+          <div className="lp-sec">
+            <div className="lp-sec-h"><Radio size={11} /> Scope</div>
+            <div className="lp-nav">
+              <button className={`lp-navbtn ${tab === "daily" ? "on" : ""}`} onClick={() => { setTab("daily"); setFilter("All"); exitTopic(); }}>
+                <span>Daily<small>Last 24 to 48 hours</small></span>
+                <span className="lp-pill">{data.daily.length || "--"}</span>
+              </button>
+              <button className={`lp-navbtn ${tab === "weekly" ? "on" : ""}`} onClick={() => { setTab("weekly"); setFilter("All"); exitTopic(); }}>
+                <span>Weekly<small>Trends over 7 days</small></span>
+                <span className="lp-pill">{data.weekly.length || "--"}</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="lp-sec">
+            <div className="lp-sec-h"><Filter size={11} /> View</div>
+            <Switch on={highImpactOnly} onClick={() => setHighImpactOnly((v) => !v)} icon={Flame} label="High impact only" />
+            <Switch on={sortByImpact} onClick={() => setSortByImpact((v) => !v)} icon={ArrowDownWideNarrow} label="Sort by impact" />
+            <Switch on={watchlistOnly} onClick={() => setWatchlistOnly((v) => !v)} icon={Eye} label="Watchlist only" disabled={!watchlist.length} />
+          </div>
+
+          <div className="lp-sec">
+            <div className="lp-sec-h"><Star size={11} /> Watchlist</div>
+            <input className="lp-wl-input" value={watchInput} onChange={(e) => setWatchInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addWatch(); }} placeholder="Lane, port, project..." />
+            <button className="lp-wl-add" onClick={addWatch}><Plus size={14} /> Pin term</button>
+            {watchlist.length ? (
+              <div className="lp-wl-chips">{watchlist.map((w) => (<span key={w} className="lp-wl-chip">{w}<button onClick={() => removeWatch(w)} aria-label={`Remove ${w}`}><X size={11} /></button></span>))}</div>
+            ) : (<div className="lp-wl-empty">Pin terms like Newark, Red Sea, or SpeedX. Matches get flagged and floated to the top.</div>)}
+          </div>
+
+          <div className="lp-sec">
+            <div className="lp-sec-h"><Cpu size={11} /> Agent</div>
+            <div className="lp-agentbox">
+              <div className="lp-agentrow"><span>Model</span><b>claude-sonnet-4-6</b></div>
+              <div className="lp-agentrow"><span>Last run</span><b>{fmtTime(updated)}</b></div>
+              <div className="lp-agentrow"><span>Sources read</span><b>{sources.length || "--"}</b></div>
+              <button className="lp-howbtn" onClick={() => setShowHow((v) => !v)}>{showHow ? "Hide how it works" : "How this agent works"}</button>
+              {showHow && (
+                <div className="lp-how">It runs a five step loop on every refresh:
+                  <ol>
+                    <li>Plans the queries that matter to Maersk's lines of business</li>
+                    <li>Searches live sources across the open web</li>
+                    <li>Filters results down to what is relevant</li>
+                    <li>Ranks each story by impact on your portfolio</li>
+                    <li>Synthesizes a short executive read</li>
+                  </ol>
+                </div>
+              )}
+            </div>
+          </div>
+        </aside>
+
+        {/* MAIN */}
+        <main className="lp-main">
+          <div className="lp-top">
+            <div>
+              <div className="lp-h1">{tab === "daily" ? <>Daily <em>briefing</em></> : <>Weekly <em>outlook</em></>}</div>
+              <div className="lp-h1-sub">{tab === "daily" ? "The stories moving logistics in the last 24 to 48 hours" : "The trends shaping logistics this week"}</div>
+              <div className="lp-sync"><span className="lp-live" /> {dataMode === "demo" ? "Sample data" : "Feed live"} · synced {fmtTime(updated)}{dataMode === "demo" && <span className="lp-demo" title="Live web search runs when hosted with API access">demo</span>}</div>
+            </div>
+            <div className="lp-actions">
+              <button className="lp-btn" onClick={() => setShowBriefing(true)} disabled={loading || !items.length}><FileText size={15} /> Briefing</button>
+              <button className="lp-btn lp-btn-pri" onClick={fetchEvents} disabled={loading}><RefreshCw size={15} className={loading ? "lp-spin" : ""} />{loading ? "Running agent" : "Run agent"}</button>
+            </div>
+          </div>
+
+          {!topicMode && showTip && (
+            <div className="lp-tip">
+              <Sparkles size={15} />
+              <span>Tap any story to see how it affects Maersk, jump to a business line from inside it, or press Enter in search to scan the live web.</span>
+              <button className="lp-tip-x" onClick={() => setShowTip(false)} aria-label="Dismiss tip"><X size={14} /></button>
+            </div>
+          )}
+
+          {/* STRAIT OF HORMUZ / IRAN WATCH */}
+          {!topicMode && (
+            <div className="lp-hormuz">
+              <div className="lp-hz-head">
+                <div className="lp-hz-title"><AlertTriangle size={16} /> Strait of Hormuz / Iran Watch</div>
+                <div className="lp-hz-actions">
+                  {hormuzData && !hormuzLoading && <span className={`lp-hz-status lp-hz-${(hormuzData.status || "watch").toLowerCase()}`}>{hormuzData.status}</span>}
+                  <button className="lp-hz-icon" onClick={() => loadHormuz(dataMode === "live")} title="Refresh this watch" disabled={hormuzLoading}><RefreshCw size={13} className={hormuzLoading ? "lp-spin" : ""} /></button>
+                  <button className="lp-hz-icon" onClick={() => setHormuzCollapsed((v) => !v)} title={hormuzCollapsed ? "Expand" : "Collapse"}><ChevronDown size={15} className={hormuzCollapsed ? "" : "lp-chev up"} /></button>
+                </div>
+              </div>
+              {!hormuzCollapsed && (
+                hormuzLoading && !hormuzData ? (
+                  <>
+                    <div className="lp-analyzing" style={{ marginTop: 14 }}><Cpu size={12} /> Agent checking the latest on the strait...</div>
+                    <div className="lp-detail-skel" style={{ marginTop: 12, width: "94%" }} />
+                    <div className="lp-detail-skel" style={{ width: "82%" }} />
+                  </>
+                ) : hormuzData ? (
+                  <>
+                    <p className="lp-hz-situation">{hormuzData.situation}</p>
+                    {hormuzDemo && <div className="lp-hz-note">Sample watch. Live updates pull from the web when this is hosted with API access.</div>}
+                    <div className="lp-hz-grid">
+                      {(hormuzData.updates || []).map((item, idx) => {
+                        const im = IMP[item.impact] || IMP.medium;
+                        return (
+                          <div key={idx} className="lp-hz-item" role="button" tabIndex={0} onClick={() => openArticle(item)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openArticle(item); } }}>
+                            <div className="lp-hz-item-meta"><span className="lp-imp" style={{ background: `${im.color}1A`, color: im.color }}><span className="lp-imp-dot" style={{ background: im.color }} />{im.label}</span></div>
+                            <div className="lp-hz-item-h">{item.headline}</div>
+                            <div className="lp-hz-item-src"><ExternalLink size={10} /> {item.source} · tap for Maersk impact</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : null
+              )}
+            </div>
+          )}
+
+          {/* AGENT PIPELINE */}
+          {!topicMode && ((agentPhase === "running" || showAgent) ? (
+            <div className="lp-agent">
+              <div className="lp-agent-head">
+                <div className="lp-agent-title"><Cpu size={13} /> Agent pipeline {agentPhase === "running" ? "· running" : "· complete"}</div>
+                {agentPhase === "done" && (<button className="lp-agent-toggle" onClick={() => setShowAgent(false)}>Collapse <ChevronDown size={13} className="lp-chev up" /></button>)}
+              </div>
+              <div className="lp-pipe">
+                <div className="lp-pipe-track" />
+                <div className="lp-pipe-fill" style={{ width: `calc((100% - 36px) * ${fillPct / 100})` }} />
+                {PIPE.map((p, i) => {
+                  const Ic = p.icon;
+                  const done = agentPhase === "done" || i < agentStep;
+                  const active = agentPhase === "running" && i === agentStep;
+                  return (
+                    <div key={i} className={`lp-node ${done ? "done" : ""} ${active ? "active" : ""}`}>
+                      <div className="lp-dot">{done ? <Check size={17} /> : <Ic size={16} />}</div>
+                      <div className="lp-node-lbl">{p.label}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              {sources.length > 0 && (
+                <div className="lp-sources">
+                  <div className="lp-sources-h">Sources consulted ({sources.length})</div>
+                  <div className="lp-src-list">
+                    {sources.map((s, i) => (<a key={i} className="lp-src" href={s.url} target="_blank" rel="noreferrer"><Globe size={11} /><span>{s.title}</span></a>))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            !loading && !error && items.length > 0 && (
+              <div className="lp-summary-bar">
+                <div className="lp-sb-item"><Check size={15} color="#5BD6AE" /> Agent run complete</div>
+                <div className="lp-sb-divider" />
+                <div className="lp-sb-item"><Globe size={14} /> <b>{sources.length}</b> sources read</div>
+                <div className="lp-sb-divider" />
+                <div className="lp-sb-item"><BarChart3 size={14} /> <b>{items.length}</b> stories ranked</div>
+                <div className="lp-sb-divider" />
+                <div className="lp-sb-item"><Flame size={14} color="#FF6F61" /> <b>{highCount}</b> high impact</div>
+                <button className="lp-sb-show" onClick={() => setShowAgent(true)}>Show agent run</button>
+              </div>
+            )
+          ))}
+
+          {/* READ */}
+          {!topicMode && (synthesis || synthLoading) && tab === "daily" && (
+            <div className="lp-read">
+              <div className="lp-read-lbl"><Sparkles size={12} /> Agent's read</div>
+              {synthLoading && !synthesis ? (<><div className="lp-read-load" style={{ width: "94%" }} /><div className="lp-read-load" style={{ width: "78%" }} /></>) : (<div className="lp-read-txt">{synthesis}</div>)}
+            </div>
+          )}
+
+          {!loading && !error && items.length > 0 && (
+            <div className="lp-search">
+              <Search size={16} />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && query.trim()) runTopicSearch(query); }} placeholder="Search this feed, or press Enter to search the web..." />
+              {q && !topicMode && <span className="lp-search-count">{visible.length} in feed</span>}
+              {query && <button className="lp-search-clear" onClick={() => { setQuery(""); if (topicMode) exitTopic(); }} aria-label="Clear search"><X size={15} /></button>}
+            </div>
+          )}
+
+          {!loading && !error && items.length > 0 && query.trim() && (topicQuery.toLowerCase() !== query.trim().toLowerCase() || !topicMode) && (
+            <div className="lp-websearch">
+              <button onClick={() => runTopicSearch(query)}><Globe size={14} /> Search the web for “{query.trim()}” <ArrowRight size={13} /></button>
+              <span className="lp-websearch-note">Sends the agent to pull fresh stories on this topic</span>
+            </div>
+          )}
+
+          {/* FILTERS */}
+          {!topicMode && !loading && !error && items.length > 0 && (
+            <div className="lp-filters">{categories.map((c) => (<button key={c} className={`lp-chip ${filter === c ? "on" : ""}`} onClick={() => setFilter(c)}>{c}</button>))}</div>
+          )}
+
+          {!topicMode && !loading && !error && q && otherMatches > 0 && visible.length > 0 && (
+            <div className="lp-othertab"><button onClick={() => setTab(otherTab)}><Search size={13} /> {otherMatches} more for “{query}” in {otherTab === "daily" ? "Daily" : "Weekly"} <ArrowRight size={13} /></button></div>
+          )}
+
+          {/* FEED */}
+          {!topicMode && loading && (<div className="lp-feed">{[0, 1, 2, 3, 4].map((i) => <div key={i} className="lp-skel" />)}</div>)}
+
+          {!topicMode && error && !loading && (
+            <div className="lp-state"><AlertTriangle size={30} color="#F4A43A" /><div style={{ maxWidth: 380, lineHeight: 1.5 }}>{error}</div><button className="lp-btn lp-btn-pri" onClick={fetchEvents}>Run agent again</button></div>
+          )}
+
+          {!topicMode && !loading && !error && (
+            visible.length === 0 ? (
+              <div className="lp-state"><Eye size={28} color="#8AA7BA" />
+                <div style={{ maxWidth: 360, lineHeight: 1.5 }}>{q ? `No stories in ${tab === "daily" ? "Daily" : "Weekly"} match “${query}”.` : "No stories match these filters. Clear a filter or run the agent again."}</div>
+                {q && otherMatches > 0 && <button className="lp-btn" onClick={() => setTab(otherTab)} style={{ marginTop: 2 }}><Search size={14} /> See {otherMatches} in {otherTab === "daily" ? "Daily" : "Weekly"}</button>}
+              </div>
+            ) : (
+              <div className="lp-feed">
+                {visible.map((item, idx) => renderCard(item, idx))}
+              </div>
+            )
+          )}
+
+          {/* TOPIC SEARCH RESULTS */}
+          {topicMode && (
+            <div className="lp-topic">
+              <div className="lp-topic-bar">
+                <div className="lp-topic-title"><Globe size={15} /> {topicLoading ? "Searching the web for" : "Results for"} “{topicQuery}”{!topicLoading && topicResults.length > 0 && <span className="lp-topic-count">{topicResults.length}</span>}</div>
+                <button className="lp-btn" onClick={exitTopic}><ArrowLeft size={14} /> Back to {tab === "daily" ? "Daily" : "Weekly"}</button>
+              </div>
+              {!topicLoading && topicDemo && <div className="lp-topic-note">Sample mode. Live web search runs when this is hosted with API access. Showing matches from the loaded feed.</div>}
+              {!topicLoading && !topicDemo && topicSources > 0 && <div className="lp-topic-note"><Globe size={12} /> The agent searched {topicSources} sources for this topic.</div>}
+              {topicLoading ? (
+                <>
+                  <div className="lp-analyzing" style={{ marginTop: 16 }}><Cpu size={12} /> Agent searching live sources for “{topicQuery}”...</div>
+                  <div className="lp-feed" style={{ marginTop: 14 }}>{[0, 1, 2, 3].map((i) => <div key={i} className="lp-skel" />)}</div>
+                </>
+              ) : topicResults.length === 0 ? (
+                <div className="lp-state"><Search size={28} color="#8AA7BA" /><div style={{ maxWidth: 360, lineHeight: 1.5 }}>No results found for “{topicQuery}”. Try a different or broader term.</div></div>
+              ) : (
+                <div className="lp-feed" style={{ marginTop: 16 }}>
+                  {topicResults.map((item, idx) => renderCard(item, idx))}
+                </div>
+              )}
+            </div>
+          )}
+        </main>
+      </div>
+
+      {selectedArticle && (() => {
+        const meta = cm(selectedArticle.category); const Ic = meta.icon;
+        const im = IMP[selectedArticle.impact] || IMP.medium;
+        const url = selectedArticle.url || `https://news.google.com/search?q=${encodeURIComponent(selectedArticle.headline)}`;
+        const watched = isWatched(selectedArticle);
+        return (
+          <div className="lp-reader">
+            <div className="lp-reader-inner">
+              <button className="lp-back" onClick={closeArticle}><ArrowLeft size={15} /> Back to {tab === "daily" ? "daily briefing" : "weekly outlook"}</button>
+              <div className="lp-detail" style={{ "--accent": meta.color }}>
+                <div className="lp-detail-meta">
+                  <span className="lp-cat"><Ic size={13} color={meta.color} /> {selectedArticle.category}</span>
+                  <span className="lp-imp" style={{ background: `${im.color}1A`, color: im.color }}><span className="lp-imp-dot" style={{ background: im.color }} />{im.label}</span>
+                  {watched && <span className="lp-wbadge"><Star size={9} /> Watch</span>}
+                </div>
+                <h1 className="lp-detail-h1">{selectedArticle.headline}</h1>
+                <div className="lp-detail-source"><ExternalLink size={12} /> {selectedArticle.source}</div>
+
+                <div className="lp-block">
+                  <div className="lp-block-h"><Newspaper size={13} /> What happened</div>
+                  {detailLoading && !articleDetail
+                    ? (<><div className="lp-detail-skel" style={{ width: "97%" }} /><div className="lp-detail-skel" style={{ width: "82%" }} /></>)
+                    : (<p className="lp-block-p">{(articleDetail && articleDetail.whatHappened) || selectedArticle.summary}</p>)}
+                </div>
+
+                <div className="lp-impact-card">
+                  <div className="lp-block-h"><Anchor size={13} /> How this affects Maersk</div>
+                  {detailLoading && !articleDetail ? (
+                    <>
+                      <div className="lp-analyzing"><Cpu size={12} /> Analyzing impact for Maersk...</div>
+                      <div className="lp-detail-skel" style={{ width: "96%", marginTop: 14 }} />
+                      <div className="lp-detail-skel" style={{ width: "88%" }} />
+                      <div className="lp-detail-skel" style={{ width: "64%" }} />
+                    </>
+                  ) : (
+                    <>
+                      <p className="lp-block-p">{articleDetail && articleDetail.maerskImpact}</p>
+                      {articleDetail && articleDetail.affectedAreas && articleDetail.affectedAreas.length > 0 && (
+                        <div className="lp-areas">{articleDetail.affectedAreas.map((a, i) => <button key={i} className="lp-area" onClick={() => filterByArea(a)} title={`Filter the feed by ${a}`}><Filter size={10} /> {a}</button>)}</div>
+                      )}
+                      {articleDetail && articleDetail.implications && articleDetail.implications.length > 0 && (
+                        <div className="lp-impl">{articleDetail.implications.map((t, i) => <div key={i} className="lp-impl-item"><ArrowRight size={15} /><span>{t}</span></div>)}</div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                <div className="lp-cta-row">
+                  <a className="lp-cta" href={url} target="_blank" rel="noreferrer"><Newspaper size={16} /> Read the full article</a>
+                  <span className="lp-cta-note">Opens {selectedArticle.source} in a new tab.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {showBriefing && (
+        <div className="lp-overlay" onClick={() => setShowBriefing(false)}>
+          <div className="lp-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="lp-modal-h"><div className="lp-modal-t"><FileText size={17} color="#42B0D5" /> Team briefing</div><button className="lp-x" onClick={() => setShowBriefing(false)}><X size={18} /></button></div>
+            <div className="lp-brief">{briefingText}</div>
+            <div className="lp-modal-f"><button className="lp-btn" onClick={() => setShowBriefing(false)}>Close</button><button className="lp-btn lp-btn-pri" onClick={copyBriefing}>{copied ? (<><Check size={15} /> Copied</>) : (<><Copy size={15} /> Copy to clipboard</>)}</button></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
