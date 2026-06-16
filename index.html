@@ -11,7 +11,6 @@
 </head>
 <body>
 <div id="root"></div>
-<script>window.__API_URL__ = "/api/messages";</script>
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useCallback, useRef } = React;
 // optional persistence when opened as a file
@@ -762,16 +761,25 @@ Return TWO sets:
 
 Respond with ONLY a valid JSON object. No markdown, no code fences, no preamble or closing text. Keep every field tight. Schema:
 {"daily":[{"headline":"max 12 words","summary":"1 to 2 sentences","whyItMatters":"one short clause tied to a Maersk PM's work","category":"Ocean|Air|E-commerce|Ground|Ports & Chokepoints|Regulatory|Maersk & Carriers","impact":"high|medium|low","source":"publication name"}],"weekly":[ same shape ]}`;
-    try {
-      const res = await fetch(API_URL, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }], tools: [{ type: "web_search_20250305", name: "web_search" }] }),
-      });
+    const tryCall = async (useSearch) => {
+      const body = useSearch
+        ? { model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }], tools: [{ type: "web_search_20250305", name: "web_search" }] }
+        : { model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt + "\n\nBase your answer on your training knowledge of recent logistics trends. Return the same JSON format." }] };
+      const res = await fetch(API_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const json = await res.json();
+      if (json.error || json.type === "error") throw new Error(json.error?.message || "api error");
+      return json;
+    };
+
+    let json, usedSearch = true;
+    try { json = await tryCall(true); }
+    catch { try { json = await tryCall(false); usedSearch = false; } catch { loadDemo(); return; } }
+
+    try {
       const blocks = json.content || [];
       const text = blocks.map((b) => (b.type === "text" ? b.text : "")).filter(Boolean).join("\n");
       const srcs = []; const seen = new Set();
-      blocks.filter((b) => b.type === "web_search_tool_result").forEach((b) => (b.content || []).forEach((r) => {
+      if (usedSearch) blocks.filter((b) => b.type === "web_search_tool_result").forEach((b) => (b.content || []).forEach((r) => {
         if (r && r.url && !seen.has(r.url)) { seen.add(r.url); srcs.push({ title: r.title || r.url, url: r.url }); }
       }));
       const next = parseFeed(text);
@@ -779,10 +787,8 @@ Respond with ONLY a valid JSON object. No markdown, no code fences, no preamble 
       clearInterval(timer.current); setAgentStep(4);
       setData(next); setSources(srcs.slice(0, 10)); setUpdated(new Date()); setDataMode("live"); setLoading(false);
       generateSynthesis(next.daily);
-      loadHormuz(true);
-    } catch {
-      loadDemo();
-    }
+      loadHormuz(usedSearch);
+    } catch { loadDemo(); }
   }, [generateSynthesis, loadDemo, loadHormuz]);
 
   useEffect(() => {
