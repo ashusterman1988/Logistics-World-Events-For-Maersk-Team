@@ -1,0 +1,27 @@
+module.exports = async function handler(req, res) {
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "Method not allowed" });
+    return;
+  }
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) {
+    res.status(500).json({ error: "ANTHROPIC_API_KEY not set" });
+    return;
+  }
+  try {
+    const body = typeof req.body === "string" ? req.body : JSON.stringify(req.body || {});
+    const upstream = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+      },
+      body,
+    });
+    const text = await upstream.text();
+    res.status(upstream.status).setHeader("content-type", "application/json").send(text);
+  } catch (e) {
+    res.status(502).json({ error: "Proxy failed", detail: String(e) });
+  }
+};
